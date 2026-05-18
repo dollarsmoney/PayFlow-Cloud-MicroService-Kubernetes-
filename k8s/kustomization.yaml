@@ -1,0 +1,43 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - api-gateway-manifests.yaml
+  - auth-service-manifests.yaml
+  - fraud-detection-service-manifests.yaml
+  - frontend-manifests.yaml
+  - notification-service-manifests.yaml
+  - payment-service-manifests.yaml
+  - postgres-manifests.yaml
+  - transaction-history-service-manifests.yaml
+  - user-service-manifests.yaml
+  - wallet-service-manifests.yaml
+
+images:
+  - name: payflow/api-gateway
+    newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/api-gateway
+    newTag: latest
+  - name: payflow/auth-service
+    newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/auth-service
+    newTag: latest
+  - name: payflow/fraud-detection-service
+    newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/fraud-detection-service
+    newTag: latest
+  - name: payflow/frontend
+    newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/frontend
+    newTag: latest
+  - name: payflow/notification-service
+    newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/notification-service
+    newTag: latest
+  - name: payflow/payment-service
+    newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/payment-service
+    newTag: latest
+  - name: payflow/transaction-history-service
+    newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/transaction-history-service
+    newTag: latest
+  - name: payflow/user-service
+    newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/user-service
+    newTag: latest
+  - name: payflow/wallet-service
+    newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/wallet-service
+    newTag: latest

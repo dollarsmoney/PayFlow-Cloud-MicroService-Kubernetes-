@@ -17,6 +17,36 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: api-gateway
+            dockerfile: Dockerfile.node
+            context: .
+          - service: auth-service
+            dockerfile: Dockerfile.node
+            context: .
+          - service: fraud-detection-service
+            dockerfile: Dockerfile.node
+            context: .
+          - service: frontend
+            dockerfile: Dockerfile.node
+            context: .
+          - service: notification-service
+            dockerfile: Dockerfile.node
+            context: .
+          - service: transaction-history-service
+            dockerfile: Dockerfile.node
+            context: .
+          - service: user-service
+            dockerfile: Dockerfile.node
+            context: .
+          - service: wallet-service
+            dockerfile: Dockerfile.node
+            context: .
+          - service: payment-service
+            dockerfile: apps/payment-service/Dockerfile
+            context: apps/payment-service
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -24,7 +54,6 @@ jobs:
       - name: Configure AWS Credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          # TODO: Replace with the ARN from `terraform output github_actions_role_arn`
           role-to-assume: arn:aws:iam::827566277132:role/github-actions-payflow-deploy
           aws-region: ${{ env.AWS_REGION }}
 
@@ -32,28 +61,51 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Example: Building Auth Service
-      - name: Build, tag, and push Auth Service
+      - name: Build, tag, and push Docker image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
+          SERVICE: ${{ matrix.service }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          CONTEXT: ${{ matrix.context }}
         run: |
-          docker build --build-arg SERVICE_NAME=auth-service -f Dockerfile.node -t $ECR_REGISTRY/$ECR_REPOSITORY:auth-$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:auth-$IMAGE_TAG
+          docker build --build-arg SERVICE_NAME=$SERVICE -f $DOCKERFILE -t $ECR_REGISTRY/payflow/$SERVICE:$IMAGE_TAG $CONTEXT
+          docker push $ECR_REGISTRY/payflow/$SERVICE:$IMAGE_TAG
+
+  update-manifests:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Kubernetes Manifests using Kustomize
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          ECR_REGISTRY: 827566277132.dkr.ecr.us-east-1.amazonaws.com
+        run: |
+          cd k8s
           
-          # Pass variables for the next job
-          echo "IMAGE=$ECR_REGISTRY/$ECR_REPOSITORY:auth-$IMAGE_TAG" >> $GITHUB_ENV
+          # Install Kustomize
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          
+          # Ensure kustomization.yaml exists or fail gracefully
+          if [ ! -f "kustomization.yaml" ]; then
+            echo "Error: kustomization.yaml not found!"
+            exit 1
+          fi
 
-      # Update the Kubernetes manifest file
-      - name: Update Kubernetes Manifest for GitOps
-        run: |
-          # Use sed to replace the placeholder image with the new ECR image tag
-          sed -i "s|image: payflow/auth-service:latest|image: ${{ env.IMAGE }}|g" k8s/auth-service-manifests.yaml
+          # Update all images to the new SHA
+          SERVICES=("api-gateway" "auth-service" "fraud-detection-service" "frontend" "notification-service" "payment-service" "transaction-history-service" "user-service" "wallet-service")
+          for SERVICE in "${SERVICES[@]}"; do
+            ./kustomize edit set image payflow/$SERVICE=$ECR_REGISTRY/payflow/$SERVICE:$IMAGE_TAG
+          done
 
-      # Commit the updated manifest back to GitHub so ArgoCD can detect the change and deploy it
       - name: Commit and Push changes
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
-          git commit -am "Update image tags for deployment [skip ci]"
+          git commit -am "Update image tags to ${{ github.sha }} for GitOps [skip ci]" || echo "No changes to commit"
           git push

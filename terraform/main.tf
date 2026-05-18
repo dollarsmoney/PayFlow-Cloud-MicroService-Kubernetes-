@@ -40,8 +40,24 @@ module "eks" {
   }
 }
 
-resource "aws_ecr_repository" "payflow" {
-  name                 = "payflow"
+locals {
+  services = [
+    "api-gateway",
+    "auth-service",
+    "fraud-detection-service",
+    "frontend",
+    "notification-service",
+    "payment-service",
+    "transaction-history-service",
+    "user-service",
+    "wallet-service"
+  ]
+}
+
+resource "aws_ecr_repository" "services" {
+  for_each = toset(local.services)
+  
+  name                 = "payflow/${each.key}"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
