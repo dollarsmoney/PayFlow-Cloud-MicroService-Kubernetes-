@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Auth & User Service
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  role          String    @default("USER")
+  mfaEnabled    Boolean   @default(false)
+  mfaSecret     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  profile       UserProfile?
+  wallets       Wallet[]
+}
+
+model UserProfile {
+  id            String    @id @default(uuid())
+  userId        String    @unique
+  firstName     String
+  lastName      String
+  kycStatus     String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  address       String?
+  city          String?
+  country       String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Wallet Service
+model Wallet {
+  id            String    @id @default(uuid())
+  userId        String
+  currency      String    @default("USD")
+  balance       Decimal   @default(0.00)
+  lockedBalance Decimal   @default(0.00)
+  status        String    @default("ACTIVE") // ACTIVE, FROZEN
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user          User      @relation(fields: [userId], references: [id])
+  transactions  Ledger[]
+}
+
+model Ledger {
+  id            String    @id @default(uuid())
+  walletId      String
+  type          String    // DEPOSIT, WITHDRAWAL, TRANSFER_IN, TRANSFER_OUT
+  amount        Decimal
+  currency      String
+  referenceId   String?   // External reference or internal payment ID
+  status        String    // PENDING, COMPLETED, FAILED
+  createdAt     DateTime  @default(now())
+
+  wallet        Wallet    @relation(fields: [walletId], references: [id])
+}
+
+// Fraud Service
+model FraudAlert {
+  id            String    @id @default(uuid())
+  transactionId String
+  userId        String
+  reason        String
+  riskScore     Float
+  status        String    @default("OPEN") // OPEN, RESOLVED
+  createdAt     DateTime  @default(now())
+}

@@ -1,0 +1,95 @@
+# ==============================================================================
+# KUBERNETES MANIFEST FOR POSTGRES (DATABASE)
+# ==============================================================================
+# This file explains how to run a stateful application (a database) in Kubernetes.
+# Unlike stateless apps (like auth-service), databases need to keep their data
+# even if the Pod restarts. 
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. PERSISTENT VOLUME CLAIM (PVC)
+# ------------------------------------------------------------------------------
+# Why we use this: Pods are ephemeral. If a pod dies, its internal disk is wiped.
+# A PVC asks Kubernetes to provision a permanent external hard drive (like an 
+# AWS EBS volume) that survives pod restarts.
+# Best Practice: Always separate your compute (Pods) from your storage (Volumes).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc         # Name of the claim
+  namespace: payflow-system
+spec:
+  accessModes:
+    - ReadWriteOnce          # The volume can only be mounted by one Node at a time
+  resources:
+    requests:
+      storage: 10Gi          # We are asking for 10 Gigabytes of storage space
+
+---
+# ------------------------------------------------------------------------------
+# 2. STATEFULSET (INSTEAD OF DEPLOYMENT)
+# ------------------------------------------------------------------------------
+# Why we use this: StatefulSets are designed for apps that need persistent storage 
+# and stable network identities (like databases). If postgres-0 dies, Kubernetes 
+# brings it back as postgres-0 and reconnects it to the EXACT SAME storage volume.
+# Best Practice: Never use a standard "Deployment" for a database. Use StatefulSets.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: payflow-system
+spec:
+  serviceName: "postgres"    # Required for StatefulSets to manage DNS
+  replicas: 1                # For learning, 1 replica. In prod, you'd have a primary/replica setup.
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine  # The official lightweight Postgres image
+        ports:
+        - containerPort: 5432      # Standard Postgres port
+        
+        # Database credentials. In production, use a Kubernetes Secret!
+        env:
+        - name: POSTGRES_USER
+          value: "payflow_user"
+        - name: POSTGRES_PASSWORD
+          value: "payflow_password"
+        - name: POSTGRES_DB
+          value: "payflow_db"
+          
+        # Mounting the persistent volume into the container
+        volumeMounts:
+        - name: postgres-storage      # Name of the volume below
+          mountPath: /var/lib/postgresql/data # Where Postgres saves its data internally
+          
+      # Defining the volume that connects to our PVC
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc     # Links to the PVC we defined at the top of the file
+
+---
+# ------------------------------------------------------------------------------
+# 3. SERVICE
+# ------------------------------------------------------------------------------
+# Why we use this: This allows our microservices (like auth-service) to connect 
+# to the database using the URL: postgres://payflow_user:payflow_password@postgres:5432/payflow_db
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres             # This becomes the DNS hostname!
+  namespace: payflow-system
+spec:
+  type: ClusterIP            # Keep it internal! Never expose databases to the internet.
+  ports:
+  - port: 5432               # The port microservices will connect to
+    targetPort: 5432         # The port the postgres pod is listening on
+  selector:
+    app: postgres            # Routes traffic to the postgres StatefulSet

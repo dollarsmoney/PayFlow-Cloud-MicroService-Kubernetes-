@@ -1,0 +1,19 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install pnpm directly via npm to avoid corepack issues on Node 18
+RUN npm install -g pnpm
+
+# Copy the entire monorepo into the container
+COPY . .
+
+# Install dependencies across all workspaces
+RUN pnpm install
+
+# Pass the specific service we want to run as an argument
+ARG SERVICE_NAME
+ENV SERVICE_NAME=${SERVICE_NAME}
+
+# Run the dev script for that specific service
+CMD pnpm --filter ${SERVICE_NAME} run dev

@@ -1,0 +1,189 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # 1. INFRASTRUCTURE DEPENDENCIES
+  # ==========================================
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: payflow
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: payflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.2
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.2
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  # ==========================================
+  # 2. MICROSERVICES
+  # ==========================================
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+      args:
+        SERVICE_NAME: api-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+      args:
+        SERVICE_NAME: auth-service
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - DATABASE_URL=postgresql://payflow:password@postgres:5432/payflow
+      - REDIS_URL=redis://redis:6379
+      - KAFKA_BROKERS=kafka:29092
+      - JWT_SECRET=super-secret-key
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      redis:
+        condition: service_started
+
+  user-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+      args:
+        SERVICE_NAME: user-service
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - DATABASE_URL=postgresql://payflow:password@postgres:5432/payflow
+      - KAFKA_BROKERS=kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+  wallet-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+      args:
+        SERVICE_NAME: wallet-service
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - DATABASE_URL=postgresql://payflow:password@postgres:5432/payflow
+      - KAFKA_BROKERS=kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+      args:
+        SERVICE_NAME: notification-service
+    ports:
+      - "3004:3004"
+    environment:
+      - PORT=3004
+      - KAFKA_BROKERS=kafka:29092
+    depends_on:
+      kafka:
+        condition: service_started
+
+  fraud-detection-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+      args:
+        SERVICE_NAME: fraud-detection-service
+    ports:
+      - "3005:3005"
+    environment:
+      - PORT=3005
+      - KAFKA_BROKERS=kafka:29092
+    depends_on:
+      kafka:
+        condition: service_started
+
+  transaction-history-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+      args:
+        SERVICE_NAME: transaction-history-service
+    ports:
+      - "3006:3006"
+    environment:
+      - PORT=3006
+      - DATABASE_URL=postgresql://payflow:password@postgres:5432/payflow
+      - KAFKA_BROKERS=kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+  payment-service:
+    build:
+      context: ./apps/payment-service
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - DATABASE_URL=postgresql://payflow:password@postgres:5432/payflow
+      - KAFKA_BROKERS=kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+volumes:
+  postgres_data:

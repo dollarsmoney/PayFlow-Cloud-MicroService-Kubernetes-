@@ -1,0 +1,150 @@
+# ==============================================================================
+# KUBERNETES MANIFEST FOR AUTH-SERVICE
+# ==============================================================================
+# This file contains the complete definition needed to run the 'auth-service'
+# in a Kubernetes cluster. We use a single file with multiple YAML documents
+# (separated by "---") for easier management during local development/learning.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. NAMESPACE
+# ------------------------------------------------------------------------------
+# Why we use this: Namespaces provide a logical isolation boundary. 
+# Best Practice: Always group related microservices in a dedicated namespace 
+# rather than using the 'default' namespace. This prevents naming collisions 
+# and makes it easier to clean up (deleting the namespace deletes everything inside).
+apiVersion: v1               # The API version of the Kubernetes resource we are creating
+kind: Namespace              # The type of resource is a Namespace
+metadata:                    # Metadata to identify the resource
+  name: payflow-system       # The actual name of our namespace
+
+---
+# ------------------------------------------------------------------------------
+# 2. CONFIGMAP
+# ------------------------------------------------------------------------------
+# Why we use this: To decouple non-sensitive configuration (like ports, URLs) 
+# from the container image. 
+# Best Practice: Never hardcode environment variables in your Deployment or 
+# Dockerfile. Use ConfigMaps for general configs and Secrets for sensitive data.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-service-config  # Name of this ConfigMap
+  namespace: payflow-system  # Must match the namespace created above
+data:                        # The actual key-value pairs of our configuration
+  NODE_ENV: "production"     # Sets the Node.js environment
+  PORT: "3001"               # The internal port the service listens on
+
+---
+# ------------------------------------------------------------------------------
+# 3. SECRET
+# ------------------------------------------------------------------------------
+# Why we use this: To store sensitive data like database passwords or JWT secrets.
+# Best Practice: In a real production environment, don't store Secrets in plain 
+# YAML files in Git. Use tools like AWS Secrets Manager, HashiCorp Vault, 
+# or Sealed Secrets. For this hands-on, we base64 encode them.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: auth-service-secret  # Name of this Secret
+  namespace: payflow-system
+type: Opaque                 # Opaque means arbitrary user-defined data
+data:                        # Values MUST be base64 encoded! 
+  # "super-secret-key" encoded in base64 is "c3VwZXItc2VjcmV0LWtleQ=="
+  JWT_SECRET: c3VwZXItc2VjcmV0LWtleQ== 
+
+---
+# ------------------------------------------------------------------------------
+# 4. DEPLOYMENT
+# ------------------------------------------------------------------------------
+# Why we use this: Deployments manage the creation and scaling of Pods 
+# (the smallest deployable units in Kubernetes). It ensures that the specified 
+# number of pods are always running, replacing them if they crash.
+# Best Practice: Always use Deployments instead of creating Pods directly. 
+# Set resource requests/limits, and configure health probes (liveness/readiness).
+apiVersion: apps/v1          # API version for Deployments
+kind: Deployment             # The type of resource
+metadata:
+  name: auth-service         # Name of the deployment
+  namespace: payflow-system  # The namespace it belongs to
+  labels:                    # Labels are used to organize and select resources
+    app: auth-service        # Identifies this deployment as part of auth-service
+spec:                        # Specification of the deployment's behavior
+  replicas: 2                # Number of identical pods to run for high availability
+  selector:                  # How the deployment finds which pods to manage
+    matchLabels:             # It manages pods that have this label
+      app: auth-service
+  template:                  # The blueprint for the Pods that will be created
+    metadata:
+      labels:                # Labels applied to the Pods themselves (must match selector!)
+        app: auth-service
+    spec:                    # Specification of the Pod's internals
+      containers:            # List of containers to run inside the pod
+      - name: auth-service   # Name of the container
+        # Image to pull. Usually this is hosted on Docker Hub, AWS ECR, etc.
+        image: payflow/auth-service:latest 
+        imagePullPolicy: IfNotPresent # Only pull if we don't have it locally
+        ports:               # Ports the container exposes
+        - containerPort: 3001 # Matches our PORT env variable
+        
+        # Pulling configuration from our ConfigMap and Secret!
+        envFrom:
+        - configMapRef:      # Load all keys from ConfigMap as Env Vars
+            name: auth-service-config
+        - secretRef:         # Load all keys from Secret as Env Vars
+            name: auth-service-secret
+            
+        # Best Practice: Resource Requests & Limits
+        # Why: Prevents one service from hogging all the CPU/RAM on a node, 
+        # which would crash other services.
+        resources:
+          requests:          # The minimum resources guaranteed to the pod
+            memory: "128Mi"  # 128 Megabytes of RAM
+            cpu: "100m"      # 100 millicores (10% of 1 CPU core)
+          limits:            # The absolute maximum resources the pod can use
+            memory: "256Mi"  # Kills the pod if it goes over 256MB
+            cpu: "500m"      # Throttles CPU if it goes over 50% of 1 core
+            
+        # Best Practice: Readiness Probe
+        # Why: Tells Kubernetes exactly when the pod is ready to accept traffic.
+        # If this fails, traffic won't be sent to this pod.
+        readinessProbe:
+          httpGet:           # Make an HTTP GET request
+            path: /health    # Assuming you have a /health route in your code
+            port: 3001
+          initialDelaySeconds: 5  # Wait 5s before checking the first time
+          periodSeconds: 10       # Check every 10 seconds
+          
+        # Best Practice: Liveness Probe
+        # Why: Tells Kubernetes if the pod is stuck or deadlocked. 
+        # If this fails, Kubernetes will automatically RESTART the pod.
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 15 # Wait 15s to allow the app to fully start
+          periodSeconds: 20
+
+---
+# ------------------------------------------------------------------------------
+# 5. SERVICE
+# ------------------------------------------------------------------------------
+# Why we use this: Pods are ephemeral; they get destroyed and recreated with 
+# new IP addresses constantly. A Service provides a single, stable IP address 
+# and DNS name that acts as a load balancer in front of your Pods.
+# Best Practice: Internal communication between microservices should use 
+# ClusterIP (which is the default). Only use LoadBalancer or NodePort when 
+# exposing to the outside world.
+apiVersion: v1               # API version for Services
+kind: Service                # Type of resource
+metadata:
+  name: auth-service         # The name of the Service. Other pods can access this via http://auth-service/
+  namespace: payflow-system
+spec:
+  type: ClusterIP            # Only reachable from INSIDE the Kubernetes cluster
+  selector:                  # How the Service finds which pods to send traffic to
+    app: auth-service        # Sends traffic to pods with this label
+  ports:
+  - protocol: TCP            # TCP is standard for HTTP
+    port: 80                 # The port other services will call (e.g., http://auth-service:80/)
+    targetPort: 3001         # The port the container is actually listening on

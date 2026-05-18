@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fraud-detection-service-config
+  namespace: payflow-system
+data:
+  NODE_ENV: "production"
+  PORT: "3005"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-detection-service
+  namespace: payflow-system
+  labels:
+    app: fraud-detection-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fraud-detection-service
+  template:
+    metadata:
+      labels:
+        app: fraud-detection-service
+    spec:
+      containers:
+      - name: fraud-detection-service
+        image: payflow/fraud-detection-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3005
+        envFrom:
+        - configMapRef:
+            name: fraud-detection-service-config
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3005
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3005
+          initialDelaySeconds: 15
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraud-detection-service
+  namespace: payflow-system
+spec:
+  type: ClusterIP
+  selector:
+    app: fraud-detection-service
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 3005
