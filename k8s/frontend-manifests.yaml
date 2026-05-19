@@ -4,7 +4,6 @@ metadata:
   name: frontend-config
   namespace: payflow-system
 data:
-  NODE_ENV: "production"
   PORT: "3000"
 ---
 apiVersion: apps/v1
