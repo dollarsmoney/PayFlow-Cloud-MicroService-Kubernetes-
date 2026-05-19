@@ -11,5 +11,13 @@
   "devDependencies": {
     "turbo": "^1.10.15",
     "typescript": "^5.2.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "prisma",
+      "@prisma/client",
+      "@prisma/engines",
+      "bcrypt"
+    ]
   }
 }
