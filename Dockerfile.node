@@ -8,10 +8,16 @@ RUN npm install -g pnpm
 # Copy the entire monorepo into the container
 COPY . .
 
+# Allow Prisma postinstall scripts (blocked by default in pnpm v10+)
+RUN pnpm config set onlyBuiltDependencies "prisma @prisma/client @prisma/engines bcrypt"
+
 # Install dependencies across all workspaces
 RUN pnpm install
 
-# CRUCIAL STEP: Compile all internal packages
+# Generate Prisma client (required before @payflow/db can compile)
+RUN pnpm --filter @payflow/db run generate
+
+# Compile all internal packages (produces dist/index.js for @payflow/db, @payflow/events, etc.)
 RUN pnpm build
 
 # Pass the specific service we want to run as an argument
