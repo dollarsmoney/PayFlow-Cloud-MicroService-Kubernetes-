@@ -82,7 +82,7 @@ spec:                        # Specification of the deployment's behavior
       containers:            # List of containers to run inside the pod
       - name: auth-service   # Name of the container
         # Image to pull. Usually this is hosted on Docker Hub, AWS ECR, etc.
-        image: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow:auth-35a8823937291c0ce7f68bf39c493c7c8eb6245a 
+        image: payflow/auth-service:latest
         imagePullPolicy: IfNotPresent # Only pull if we don't have it locally
         ports:               # Ports the container exposes
         - containerPort: 3001 # Matches our PORT env variable
