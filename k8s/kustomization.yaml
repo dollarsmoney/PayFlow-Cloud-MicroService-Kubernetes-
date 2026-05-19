@@ -16,28 +16,28 @@ resources:
 images:
 - name: payflow/api-gateway
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/api-gateway
-  newTag: b828b32e1dc8c1f4726b656ef90d3de0ffe2d007
+  newTag: fca59573323574f555271fa29d2ea2806ea00a68
 - name: payflow/auth-service
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/auth-service
-  newTag: b828b32e1dc8c1f4726b656ef90d3de0ffe2d007
+  newTag: fca59573323574f555271fa29d2ea2806ea00a68
 - name: payflow/fraud-detection-service
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/fraud-detection-service
-  newTag: b828b32e1dc8c1f4726b656ef90d3de0ffe2d007
+  newTag: fca59573323574f555271fa29d2ea2806ea00a68
 - name: payflow/frontend
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/frontend
-  newTag: b828b32e1dc8c1f4726b656ef90d3de0ffe2d007
+  newTag: fca59573323574f555271fa29d2ea2806ea00a68
 - name: payflow/notification-service
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/notification-service
-  newTag: b828b32e1dc8c1f4726b656ef90d3de0ffe2d007
+  newTag: fca59573323574f555271fa29d2ea2806ea00a68
 - name: payflow/payment-service
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/payment-service
-  newTag: b828b32e1dc8c1f4726b656ef90d3de0ffe2d007
+  newTag: fca59573323574f555271fa29d2ea2806ea00a68
 - name: payflow/transaction-history-service
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/transaction-history-service
-  newTag: b828b32e1dc8c1f4726b656ef90d3de0ffe2d007
+  newTag: fca59573323574f555271fa29d2ea2806ea00a68
 - name: payflow/user-service
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/user-service
-  newTag: b828b32e1dc8c1f4726b656ef90d3de0ffe2d007
+  newTag: fca59573323574f555271fa29d2ea2806ea00a68
 - name: payflow/wallet-service
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/wallet-service
-  newTag: b828b32e1dc8c1f4726b656ef90d3de0ffe2d007
+  newTag: fca59573323574f555271fa29d2ea2806ea00a68
