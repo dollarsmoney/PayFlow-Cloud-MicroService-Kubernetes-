@@ -6,7 +6,8 @@ WORKDIR /app
 RUN npm install -g pnpm
 
 # System deps: python3 + make + g++ required by bcrypt native addon (node-gyp)
-RUN apk add --no-cache python3 make g++
+# openssl required by Prisma to detect the correct OpenSSL 3 version on Alpine
+RUN apk add --no-cache python3 make g++ openssl
 
 # Copy the entire monorepo into the container
 COPY . .
