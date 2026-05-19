@@ -5,10 +5,8 @@ WORKDIR /app
 # Install pnpm directly via npm to avoid corepack issues on Node 18
 RUN npm install -g pnpm
 
-# System deps:
-#  - openssl1.1-compat: Prisma 5.x engines require libssl.so.1.1 (Alpine ships OpenSSL 3 by default)
-#  - python3 + make + g++: bcrypt native addon needs node-gyp build tools
-RUN apk add --no-cache openssl1.1-compat python3 make g++
+# System deps: python3 + make + g++ required by bcrypt native addon (node-gyp)
+RUN apk add --no-cache python3 make g++
 
 # Copy the entire monorepo into the container
 COPY . .
