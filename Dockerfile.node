@@ -9,7 +9,10 @@ RUN npm install -g pnpm
 COPY . .
 
 # Install dependencies across all workspaces
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
+
+# CRUCIAL STEP: Compile all internal packages
+RUN pnpm build
 
 # Pass the specific service we want to run as an argument
 ARG SERVICE_NAME
