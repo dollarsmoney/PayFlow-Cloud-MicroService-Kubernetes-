@@ -16,6 +16,11 @@ func main() {
 
 	router := gin.Default()
 
+	// Health check — required by Kubernetes readiness/liveness probes
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
 	// Setup routes
 	api := router.Group("/api/v1/payments")
 	{
