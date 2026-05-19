@@ -9,7 +9,7 @@ RUN npm install -g pnpm
 COPY . .
 
 # Install dependencies across all workspaces
-RUN pnpm install --frozen-lockfile
+RUN pnpm install
 
 # CRUCIAL STEP: Compile all internal packages
 RUN pnpm build
@@ -19,4 +19,4 @@ ARG SERVICE_NAME
 ENV SERVICE_NAME=${SERVICE_NAME}
 
 # Run the dev script for that specific service
-CMD pnpm --filter ${SERVICE_NAME} run dev
+CMD ["sh", "-c", "pnpm --filter ${SERVICE_NAME} run dev"]
