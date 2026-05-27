@@ -9,9 +9,9 @@
 # ------------------------------------------------------------------------------
 # 1. NAMESPACE
 # ------------------------------------------------------------------------------
-# Why we use this: Namespaces provide a logical isolation boundary. 
-# Best Practice: Always group related microservices in a dedicated namespace 
-# rather than using the 'default' namespace. This prevents naming collisions 
+# Why we use this: Namespaces provide a logical isolation boundary.
+# Best Practice: Always group related microservices in a dedicated namespace
+# rather than using the 'default' namespace. This prevents naming collisions
 # and makes it easier to clean up (deleting the namespace deletes everything inside).
 apiVersion: v1               # The API version of the Kubernetes resource we are creating
 kind: Namespace              # The type of resource is a Namespace
@@ -22,9 +22,9 @@ metadata:                    # Metadata to identify the resource
 # ------------------------------------------------------------------------------
 # 2. CONFIGMAP
 # ------------------------------------------------------------------------------
-# Why we use this: To decouple non-sensitive configuration (like ports, URLs) 
-# from the container image. 
-# Best Practice: Never hardcode environment variables in your Deployment or 
+# Why we use this: To decouple non-sensitive configuration (like ports, URLs)
+# from the container image.
+# Best Practice: Never hardcode environment variables in your Deployment or
 # Dockerfile. Use ConfigMaps for general configs and Secrets for sensitive data.
 apiVersion: v1
 kind: ConfigMap
@@ -35,32 +35,26 @@ data:                        # The actual key-value pairs of our configuration
   NODE_ENV: "production"     # Sets the Node.js environment
   PORT: "3001"               # The internal port the service listens on
 
----
-# ------------------------------------------------------------------------------
-# 3. SECRET
-# ------------------------------------------------------------------------------
-# Why we use this: To store sensitive data like database passwords or JWT secrets.
-# Best Practice: In a real production environment, don't store Secrets in plain 
-# YAML files in Git. Use tools like AWS Secrets Manager, HashiCorp Vault, 
-# or Sealed Secrets. For this hands-on, we base64 encode them.
-apiVersion: v1
-kind: Secret
-metadata:
-  name: auth-service-secret  # Name of this Secret
-  namespace: payflow-system
-type: Opaque                 # Opaque means arbitrary user-defined data
-data:                        # Values MUST be base64 encoded! 
-  # "super-secret-key" encoded in base64 is "c3VwZXItc2VjcmV0LWtleQ=="
-  JWT_SECRET: c3VwZXItc2VjcmV0LWtleQ== 
+  # Downstream service URLs — auth-service needs to verify users exist
+  USER_SERVICE_URL: "http://user-service"
+
+  # Kafka bootstrap server — auth-service publishes auth events (login, logout, etc.)
+  # Consumer groups: fraud-detection-service and notification-service subscribe to auth topics
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  KAFKA_CLIENT_ID: "auth-service"
+  KAFKA_GROUP_ID: "auth-service-group"
+
+  # Topic names this service publishes to
+  KAFKA_TOPIC_AUTH_EVENTS: "auth.login.success"
 
 ---
 # ------------------------------------------------------------------------------
-# 4. DEPLOYMENT
+# 3. DEPLOYMENT
 # ------------------------------------------------------------------------------
-# Why we use this: Deployments manage the creation and scaling of Pods 
-# (the smallest deployable units in Kubernetes). It ensures that the specified 
+# Why we use this: Deployments manage the creation and scaling of Pods
+# (the smallest deployable units in Kubernetes). It ensures that the specified
 # number of pods are always running, replacing them if they crash.
-# Best Practice: Always use Deployments instead of creating Pods directly. 
+# Best Practice: Always use Deployments instead of creating Pods directly.
 # Set resource requests/limits, and configure health probes (liveness/readiness).
 apiVersion: apps/v1          # API version for Deployments
 kind: Deployment             # The type of resource
@@ -79,23 +73,26 @@ spec:                        # Specification of the deployment's behavior
       labels:                # Labels applied to the Pods themselves (must match selector!)
         app: auth-service
     spec:                    # Specification of the Pod's internals
+      serviceAccountName: payflow-service-account  # Use the dedicated RBAC service account
       containers:            # List of containers to run inside the pod
       - name: auth-service   # Name of the container
         # Image to pull. Usually this is hosted on Docker Hub, AWS ECR, etc.
         image: payflow/auth-service:latest
-        imagePullPolicy: IfNotPresent # Only pull if we don't have it locally
+        imagePullPolicy: IfNotPresent  # Only pull if we don't have it locally
         ports:               # Ports the container exposes
-        - containerPort: 3001 # Matches our PORT env variable
-        
-        # Pulling configuration from our ConfigMap and Secret!
+        - containerPort: 3001  # Matches our PORT env variable
+
+        # Load non-sensitive config from the ConfigMap
+        # Load ALL secrets (DATABASE_URL, JWT_SECRET, POSTGRES_*) from the centralized Secret
+        # IMPROVED: Consolidated into payflow-secrets — single source of truth for credentials
         envFrom:
         - configMapRef:      # Load all keys from ConfigMap as Env Vars
             name: auth-service-config
         - secretRef:         # Load all keys from Secret as Env Vars
-            name: auth-service-secret
-            
+            name: payflow-secrets
+
         # Best Practice: Resource Requests & Limits
-        # Why: Prevents one service from hogging all the CPU/RAM on a node, 
+        # Why: Prevents one service from hogging all the CPU/RAM on a node,
         # which would crash other services.
         resources:
           requests:          # The minimum resources guaranteed to the pod
@@ -104,7 +101,7 @@ spec:                        # Specification of the deployment's behavior
           limits:            # The absolute maximum resources the pod can use
             memory: "256Mi"  # Kills the pod if it goes over 256MB
             cpu: "500m"      # Throttles CPU if it goes over 50% of 1 core
-            
+
         # Best Practice: Readiness Probe
         # Why: Tells Kubernetes exactly when the pod is ready to accept traffic.
         # If this fails, traffic won't be sent to this pod.
@@ -112,28 +109,28 @@ spec:                        # Specification of the deployment's behavior
           httpGet:           # Make an HTTP GET request
             path: /health    # Assuming you have a /health route in your code
             port: 3001
-          initialDelaySeconds: 5  # Wait 5s before checking the first time
-          periodSeconds: 10       # Check every 10 seconds
-          
+          initialDelaySeconds: 5   # Wait 5s before checking the first time
+          periodSeconds: 10        # Check every 10 seconds
+
         # Best Practice: Liveness Probe
-        # Why: Tells Kubernetes if the pod is stuck or deadlocked. 
+        # Why: Tells Kubernetes if the pod is stuck or deadlocked.
         # If this fails, Kubernetes will automatically RESTART the pod.
         livenessProbe:
           httpGet:
             path: /health
             port: 3001
-          initialDelaySeconds: 15 # Wait 15s to allow the app to fully start
+          initialDelaySeconds: 15  # Wait 15s to allow the app to fully start
           periodSeconds: 20
 
 ---
 # ------------------------------------------------------------------------------
-# 5. SERVICE
+# 4. SERVICE
 # ------------------------------------------------------------------------------
-# Why we use this: Pods are ephemeral; they get destroyed and recreated with 
-# new IP addresses constantly. A Service provides a single, stable IP address 
+# Why we use this: Pods are ephemeral; they get destroyed and recreated with
+# new IP addresses constantly. A Service provides a single, stable IP address
 # and DNS name that acts as a load balancer in front of your Pods.
-# Best Practice: Internal communication between microservices should use 
-# ClusterIP (which is the default). Only use LoadBalancer or NodePort when 
+# Best Practice: Internal communication between microservices should use
+# ClusterIP (which is the default). Only use LoadBalancer or NodePort when
 # exposing to the outside world.
 apiVersion: v1               # API version for Services
 kind: Service                # Type of resource

@@ -1,0 +1,90 @@
+# ==============================================================================
+# KUBERNETES MANIFEST FOR RBAC (Role-Based Access Control)
+# ==============================================================================
+# Why we use this:
+# By default, pods run with no ServiceAccount (or the 'default' account) and
+# have no K8s API access. Creating a dedicated ServiceAccount with minimal
+# permissions follows the Principle of Least Privilege.
+#
+# Structure:
+#   ServiceAccount  → the identity assigned to PayFlow pods
+#   Role            → defines what API resources the pods can access
+#   RoleBinding     → links the ServiceAccount to the Role
+#
+# Best Practice: Never use cluster-admin for application pods. Grant only the
+# permissions the application actually needs (get/list/watch for config reading).
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. SERVICE ACCOUNT — the identity for all PayFlow pods
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: payflow-service-account
+  namespace: payflow-system
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: payflow
+  annotations:
+    # For production: attach an IAM role via IRSA (IAM Roles for Service Accounts)
+    # so pods can access AWS services (S3, SES, SNS) without hardcoded credentials.
+    # eks.amazonaws.com/role-arn: arn:aws:iam::827566277132:role/payflow-service-role
+automountServiceAccountToken: true
+
+---
+# ------------------------------------------------------------------------------
+# 2. ROLE — minimal read permissions scoped to payflow-system namespace
+# ------------------------------------------------------------------------------
+# Why namespace-scoped Role (not ClusterRole):
+# Our services only need to read config within their own namespace.
+# A ClusterRole would give access across ALL namespaces — unnecessary privilege.
+# ------------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: payflow-app-role
+  namespace: payflow-system
+  labels:
+    app.kubernetes.io/part-of: payflow
+rules:
+  # Allow services to read their own ConfigMaps (for dynamic config reload)
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+
+  # Allow reading pod status (useful for service mesh and health checks)
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+
+  # Allow reading service endpoints (for service discovery)
+- apiGroups: [""]
+  resources: ["endpoints", "services"]
+  verbs: ["get", "list", "watch"]
+
+  # Allow reading secrets (needed to mount secrets as volumes)
+  # Note: Limit to specific secret names in high-security environments
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+
+---
+# ------------------------------------------------------------------------------
+# 3. ROLE BINDING — grants the ServiceAccount the Role permissions
+# ------------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: payflow-app-role-binding
+  namespace: payflow-system
+  labels:
+    app.kubernetes.io/part-of: payflow
+subjects:
+- kind: ServiceAccount
+  name: payflow-service-account
+  namespace: payflow-system
+roleRef:
+  kind: Role
+  name: payflow-app-role
+  apiGroup: rbac.authorization.k8s.io

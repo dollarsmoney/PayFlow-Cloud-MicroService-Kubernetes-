@@ -13,5 +13,5 @@ variable "cluster_name" {
 variable "github_repo" {
   description = "GitHub repository in format org/repo (e.g., octocat/hello-world)"
   type        = string
-  default     = "YOUR_GITHUB_USERNAME/Cloud-Micro-Service-Infra"
+  default     = "dollarsmoney/PayFlow-Cloud-MicroService-Kubernetes-"
 }

@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    # Correct GitHub repository URL
+    # TODO: Replace this with your actual GitHub repository URL once you push the code
     repoURL: 'https://github.com/dollarsmoney/PayFlow-Cloud-MicroService-Kubernetes-.git'
     targetRevision: HEAD
     path: k8s           # The path to the folder containing all our microservice manifests

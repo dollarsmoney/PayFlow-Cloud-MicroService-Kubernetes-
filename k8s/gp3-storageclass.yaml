@@ -1,0 +1,26 @@
+# ==============================================================================
+# GP3 STORAGECLASS
+# ==============================================================================
+# Why we use this: By default, EKS uses gp2 EBS volumes. gp3 is the newer
+# generation that delivers 20% lower cost and 3x the IOPS baseline vs gp2.
+# Best Practice: Always set gp3 as the default StorageClass in EKS clusters.
+#
+# Requires: The aws-ebs-csi-driver addon must be installed on the EKS cluster.
+#           See terraform/main.tf for the addon + IRSA configuration.
+#
+# Usage: Any PVC that does not specify a storageClassName will use this class.
+# ==============================================================================
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer  # Only provision volume when a pod is scheduled (better AZ placement)
+allowVolumeExpansion: true               # Allow growing volumes without data loss
+reclaimPolicy: Retain                    # Don't auto-delete EBS volumes when PVC is deleted
+parameters:
+  type: gp3
+  fsType: ext4
+  encrypted: "true"                      # Encrypt volumes at rest (AWS best practice)

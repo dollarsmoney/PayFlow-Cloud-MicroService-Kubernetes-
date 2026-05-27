@@ -6,6 +6,15 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "3003"
+
+  # Kafka — wallet-service publishes debit/credit events consumed by
+  # fraud-detection, notification, and transaction-history services
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  KAFKA_CLIENT_ID: "wallet-service"
+  KAFKA_GROUP_ID: "wallet-service-group"
+  KAFKA_TOPIC_WALLET_CREDITED: "wallet.credited"
+  KAFKA_TOPIC_WALLET_DEBITED: "wallet.debited"
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -24,6 +33,7 @@ spec:
       labels:
         app: wallet-service
     spec:
+      serviceAccountName: payflow-service-account
       containers:
       - name: wallet-service
         image: payflow/wallet-service:latest
@@ -33,6 +43,9 @@ spec:
         envFrom:
         - configMapRef:
             name: wallet-service-config
+        - secretRef:
+            # Injects: DATABASE_URL, POSTGRES_USER, POSTGRES_PASSWORD, JWT_SECRET
+            name: payflow-secrets
         resources:
           requests:
             memory: "128Mi"
@@ -52,6 +65,7 @@ spec:
             port: 3003
           initialDelaySeconds: 15
           periodSeconds: 20
+
 ---
 apiVersion: v1
 kind: Service

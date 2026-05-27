@@ -1,0 +1,13 @@
+{
+  "/not-found": "app/not-found.js",
+  "/page": "app/page.js",
+  "/auth/login/page": "app/auth/login/page.js",
+  "/auth/signup/page": "app/auth/signup/page.js",
+  "/dashboard/payments/page": "app/dashboard/payments/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/dashboard/wallets/page": "app/dashboard/wallets/page.js",
+  "/dashboard/history/page": "app/dashboard/history/page.js",
+  "/dashboard/users/page": "app/dashboard/users/page.js",
+  "/dashboard/fraud/page": "app/dashboard/fraud/page.js",
+  "/dashboard/notifications/page": "app/dashboard/notifications/page.js"
+}

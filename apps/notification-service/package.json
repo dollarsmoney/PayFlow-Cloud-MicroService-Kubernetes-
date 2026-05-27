@@ -12,11 +12,13 @@
     "helmet": "^7.0.0",
     "dotenv": "^16.3.1",
     "@payflow/db": "workspace:*",
-    "@payflow/events": "workspace:*"
+    "@payflow/events": "workspace:*",
+    "@payflow/logger": "workspace:*"
   },
   "devDependencies": {
     "@types/express": "^4.17.17",
     "@types/cors": "^2.8.13",
+    "@types/node": "^20.8.0",
     "typescript": "^5.2.2",
     "ts-node-dev": "^2.0.0"
   }

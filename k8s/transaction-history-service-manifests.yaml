@@ -6,6 +6,16 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "3006"
+
+  # Kafka — transaction-history is a CONSUMER of events from multiple services.
+  # It listens to payment, wallet, and user events to build a complete audit trail.
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  KAFKA_CLIENT_ID: "transaction-history-service"
+  KAFKA_GROUP_ID: "transaction-history-group"
+
+  # Topics this service consumes
+  KAFKA_TOPICS_CONSUME: "payment.created,payment.completed,payment.failed,wallet.credited,wallet.debited"
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -24,6 +34,7 @@ spec:
       labels:
         app: transaction-history-service
     spec:
+      serviceAccountName: payflow-service-account
       containers:
       - name: transaction-history-service
         image: payflow/transaction-history-service:latest
@@ -33,6 +44,9 @@ spec:
         envFrom:
         - configMapRef:
             name: transaction-history-service-config
+        - secretRef:
+            # Injects: DATABASE_URL for persisting transaction history records
+            name: payflow-secrets
         resources:
           requests:
             memory: "128Mi"
@@ -52,6 +66,7 @@ spec:
             port: 3006
           initialDelaySeconds: 15
           periodSeconds: 20
+
 ---
 apiVersion: v1
 kind: Service

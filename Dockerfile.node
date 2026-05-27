@@ -2,31 +2,50 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install pnpm directly via npm to avoid corepack issues on Node 18
-RUN npm install -g pnpm
+# Install pnpm
+RUN npm install -g pnpm@10
 
-# System deps: python3 + make + g++ required by bcrypt native addon (node-gyp)
-# openssl required by Prisma to detect the correct OpenSSL 3 version on Alpine
+# System deps for native addons (bcrypt, prisma)
 RUN apk add --no-cache python3 make g++ openssl
 
-# Copy the entire monorepo into the container
-COPY . .
+# ── Layer 1: Install dependencies ─────────────────────────
+# Copy ONLY manifest files first — Docker caches this layer
+# until any package.json / lock file changes.
+COPY package.json pnpm-workspace.yaml turbo.json ./
 
-# Allow Prisma postinstall scripts (blocked by default in pnpm v10+)
+# Copy package.json for every workspace package
+COPY packages/logger/package.json            packages/logger/
+COPY packages/event-contracts/package.json   packages/event-contracts/
+COPY packages/db-prisma/package.json         packages/db-prisma/
+COPY apps/auth-service/package.json          apps/auth-service/
+COPY apps/user-service/package.json          apps/user-service/
+COPY apps/wallet-service/package.json        apps/wallet-service/
+COPY apps/notification-service/package.json  apps/notification-service/
+COPY apps/fraud-detection-service/package.json apps/fraud-detection-service/
+COPY apps/transaction-history-service/package.json apps/transaction-history-service/
+COPY apps/api-gateway/package.json           apps/api-gateway/
+
+# Allow native addon build scripts
 RUN pnpm config set onlyBuiltDependencies "prisma @prisma/client @prisma/engines bcrypt"
 
-# Install dependencies across all workspaces
-RUN pnpm install
+# Install all workspace dependencies (cached unless a package.json changed)
+RUN pnpm install --frozen-lockfile || pnpm install
+
+# ── Layer 2: Copy source + build shared packages ────────────
+COPY packages/ packages/
+COPY apps/     apps/
 
 # Generate Prisma client (required before @payflow/db can compile)
 RUN pnpm --filter @payflow/db run generate
 
-# Compile all internal packages (produces dist/index.js for @payflow/db, @payflow/events, etc.)
-RUN pnpm build
+# Build ONLY the shared packages that produce dist/.
+# Apps use ts-node-dev --transpile-only and do NOT need pre-compilation.
+RUN pnpm --filter @payflow/logger  run build && \
+    pnpm --filter @payflow/events  run build && \
+    pnpm --filter @payflow/db      run build
 
-# Pass the specific service we want to run as an argument
+# ── Runtime ─────────────────────────────────────────────────
 ARG SERVICE_NAME
 ENV SERVICE_NAME=${SERVICE_NAME}
 
-# Run the dev script for that specific service
 CMD ["sh", "-c", "pnpm --filter ${SERVICE_NAME} run dev"]

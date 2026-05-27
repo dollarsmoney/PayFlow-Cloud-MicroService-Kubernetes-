@@ -1,0 +1,31 @@
+# ── Git & IDE ──────────────────────────────────────────────
+.git
+.github
+.vscode
+*.md
+
+# ── Logs & env ─────────────────────────────────────────────
+**/*.log
+**/.env
+**/.env.*
+
+# ── Node modules (Docker installs its own) ─────────────────
+**/node_modules
+**/dist
+
+# ── Next.js frontend build output (source is needed by Dockerfile.frontend) ─
+apps/frontend/.next
+apps/frontend/out
+
+# ── Go payment service (has its own Dockerfile) ────────────
+apps/payment-service
+
+# ── Build/CI artifacts ─────────────────────────────────────
+**/coverage
+**/.turbo
+**/build
+**/out
+
+# ── Generator scripts (not needed at runtime) ───────────────
+generate_*.js
+scaffold.js

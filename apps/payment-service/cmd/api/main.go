@@ -6,7 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"github.com/payflow/payment-service/internal/interfaces/http"
+	infradb "github.com/payflow/payment-service/internal/infrastructure/db"
+	httphandlers "github.com/payflow/payment-service/internal/interfaces/http"
 )
 
 func main() {
@@ -14,18 +15,22 @@ func main() {
 		log.Println("No .env file found, using environment variables")
 	}
 
+	// Connect to Postgres (with retry)
+	infradb.Connect()
+
 	router := gin.Default()
 
-	// Health check — required by Kubernetes readiness/liveness probes
+	// Health check
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+		c.JSON(200, gin.H{"status": "ok", "service": "payment-service"})
 	})
 
-	// Setup routes
+	// Payment routes
 	api := router.Group("/api/v1/payments")
 	{
-		api.POST("/process", http.ProcessPayment)
-		api.GET("/:id/status", http.GetPaymentStatus)
+		api.POST("/process",            httphandlers.ProcessPayment)
+		api.GET("/:id/status",          httphandlers.GetPaymentStatus)
+		api.GET("/user/:userId",         httphandlers.GetUserPayments)
 	}
 
 	port := os.Getenv("PORT")
@@ -33,6 +38,8 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("Payment Service running on port %s", port)
-	router.Run(":" + port)
+	log.Printf("[PaymentService] Running on port %s", port)
+	if err := router.Run(":" + port); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
 }

@@ -7,15 +7,57 @@ on:
 
 # OIDC requires these permissions
 permissions:
-  id-token: write 
+  id-token: write
   contents: write
 
 env:
   AWS_REGION: us-east-1
+  ECR_REGISTRY: 827566277132.dkr.ecr.us-east-1.amazonaws.com
   ECR_REPOSITORY: payflow
 
 jobs:
+  # ============================================================================
+  # JOB 1: VALIDATE — Lint and dry-run all K8s manifests BEFORE building
+  # ============================================================================
+  # Why validate first:
+  # Catching YAML errors before building images saves 5-10 minutes per broken push.
+  # If manifests are invalid, we fail fast without wasting ECR storage or build minutes.
+  validate-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Validate Kustomize build
+        run: |
+          echo "==> Running kustomize build to validate all manifests..."
+          kustomize build k8s/ > /tmp/rendered-manifests.yaml
+          echo "==> Kustomize build successful. Rendered $(wc -l < /tmp/rendered-manifests.yaml) lines."
+
+      - name: Dry-run apply against Kubernetes API (client-side)
+        run: |
+          echo "==> Running kubectl apply --dry-run=client to validate manifest schemas..."
+          # Note: client-side dry-run validates structure without a live cluster
+          kubectl apply --dry-run=client -f /tmp/rendered-manifests.yaml 2>&1 | tail -30
+          echo "==> All manifests passed schema validation."
+
+      - name: Upload rendered manifests as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-k8s-manifests
+          path: /tmp/rendered-manifests.yaml
+          retention-days: 7
+
+  # ============================================================================
+  # JOB 2: BUILD & PUSH — Build Docker images and push to ECR
+  # ============================================================================
   build-and-push:
+    needs: validate-manifests   # Only build if manifests are valid
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -30,7 +72,7 @@ jobs:
             dockerfile: Dockerfile.node
             context: .
           - service: frontend
-            dockerfile: Dockerfile.node
+            dockerfile: Dockerfile.frontend
             context: .
           - service: notification-service
             dockerfile: Dockerfile.node
@@ -63,15 +105,31 @@ jobs:
 
       - name: Build, tag, and push Docker image
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
           SERVICE: ${{ matrix.service }}
           DOCKERFILE: ${{ matrix.dockerfile }}
           CONTEXT: ${{ matrix.context }}
         run: |
-          docker build --build-arg SERVICE_NAME=$SERVICE -f $DOCKERFILE -t $ECR_REGISTRY/payflow/$SERVICE:$IMAGE_TAG $CONTEXT
+          echo "==> Building $SERVICE from $DOCKERFILE (context: $CONTEXT)"
+          docker build \
+            --build-arg SERVICE_NAME=$SERVICE \
+            --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+            --build-arg GIT_SHA=$IMAGE_TAG \
+            -f $DOCKERFILE \
+            -t $ECR_REGISTRY/payflow/$SERVICE:$IMAGE_TAG \
+            -t $ECR_REGISTRY/payflow/$SERVICE:latest \
+            $CONTEXT
+          echo "==> Pushing $SERVICE:$IMAGE_TAG"
           docker push $ECR_REGISTRY/payflow/$SERVICE:$IMAGE_TAG
+          docker push $ECR_REGISTRY/payflow/$SERVICE:latest
+          echo "==> Successfully pushed $SERVICE"
 
+  # ============================================================================
+  # JOB 3: UPDATE MANIFESTS — Update kustomization.yaml image tags for GitOps
+  # ============================================================================
+  # Why separate job:
+  # After ALL services are built and pushed, we update the image tags in one
+  # atomic commit. This prevents ArgoCD from syncing a half-updated state.
   update-manifests:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -81,31 +139,58 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install Kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+
       - name: Update Kubernetes Manifests using Kustomize
         env:
           IMAGE_TAG: ${{ github.sha }}
-          ECR_REGISTRY: 827566277132.dkr.ecr.us-east-1.amazonaws.com
         run: |
           cd k8s
-          
-          # Install Kustomize
-          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
-          
-          # Ensure kustomization.yaml exists or fail gracefully
+
+          # Ensure kustomization.yaml exists
           if [ ! -f "kustomization.yaml" ]; then
             echo "Error: kustomization.yaml not found!"
             exit 1
           fi
 
-          # Update all images to the new SHA
-          SERVICES=("api-gateway" "auth-service" "fraud-detection-service" "frontend" "notification-service" "payment-service" "transaction-history-service" "user-service" "wallet-service")
+          echo "==> Updating all service image tags to $IMAGE_TAG"
+
+          # Update all 9 service images to the new commit SHA
+          SERVICES=(
+            "api-gateway"
+            "auth-service"
+            "fraud-detection-service"
+            "frontend"
+            "notification-service"
+            "payment-service"
+            "transaction-history-service"
+            "user-service"
+            "wallet-service"
+          )
+
           for SERVICE in "${SERVICES[@]}"; do
-            ./kustomize edit set image payflow/$SERVICE=$ECR_REGISTRY/payflow/$SERVICE:$IMAGE_TAG
+            ../kustomize edit set image \
+              payflow/$SERVICE=$ECR_REGISTRY/payflow/$SERVICE:$IMAGE_TAG
+            echo "  Updated $SERVICE → $IMAGE_TAG"
           done
+
+          echo "==> All image tags updated."
+
+      - name: Validate updated kustomization
+        run: |
+          cd k8s
+          ../kustomize build . > /dev/null
+          echo "==> Updated kustomization.yaml is valid."
 
       - name: Commit and Push changes
         run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
-          git commit -am "Update image tags to ${{ github.sha }} for GitOps [skip ci]" || echo "No changes to commit"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/kustomization.yaml
+          git diff --staged --quiet || \
+            git commit -m "ci: update image tags to ${{ github.sha }} [skip ci]"
           git push
+          echo "==> Committed and pushed updated kustomization.yaml"
+          echo "==> ArgoCD will automatically sync the new images."

@@ -13,14 +13,19 @@
     "dotenv": "^16.3.1",
     "bcrypt": "^5.1.1",
     "jsonwebtoken": "^9.0.2",
-    "@payflow/db": "workspace:*"
+    "ioredis": "^5.3.2",
+    "@payflow/db": "workspace:*",
+    "@payflow/events": "workspace:*",
+    "@payflow/logger": "workspace:*"
   },
   "devDependencies": {
     "@types/express": "^4.17.17",
     "@types/cors": "^2.8.13",
     "@types/bcrypt": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.2",
+    "@types/node": "^20.8.0",
     "typescript": "^5.2.2",
     "ts-node-dev": "^2.0.0"
   }
 }
+

@@ -5,7 +5,21 @@ metadata:
   namespace: payflow-system
 data:
   NODE_ENV: "production"
-  PORT: "8080"
+  PORT: "8080"              # Go service uses 8080
+
+  # Kafka — payment-service is the PRIMARY event producer.
+  # It publishes payment lifecycle events consumed by fraud-detection,
+  # notification, and transaction-history services.
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  KAFKA_CLIENT_ID: "payment-service"
+  KAFKA_GROUP_ID: "payment-service-group"
+  KAFKA_TOPIC_PAYMENT_CREATED: "payment.created"
+  KAFKA_TOPIC_PAYMENT_COMPLETED: "payment.completed"
+  KAFKA_TOPIC_PAYMENT_FAILED: "payment.failed"
+
+  # Wallet service URL — payment-service calls wallet to debit/credit accounts
+  WALLET_SERVICE_URL: "http://wallet-service"
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -24,6 +38,7 @@ spec:
       labels:
         app: payment-service
     spec:
+      serviceAccountName: payflow-service-account
       containers:
       - name: payment-service
         image: payflow/payment-service:latest
@@ -33,6 +48,10 @@ spec:
         envFrom:
         - configMapRef:
             name: payment-service-config
+        - secretRef:
+            # Injects: DATABASE_URL, POSTGRES_USER, POSTGRES_PASSWORD
+            # Note: Go apps typically use DATABASE_URL or individual DB vars
+            name: payflow-secrets
         resources:
           requests:
             memory: "128Mi"
@@ -52,6 +71,7 @@ spec:
             port: 8080
           initialDelaySeconds: 15
           periodSeconds: 20
+
 ---
 apiVersion: v1
 kind: Service

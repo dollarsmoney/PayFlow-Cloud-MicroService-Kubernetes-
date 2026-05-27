@@ -1,0 +1,109 @@
+# ==============================================================================
+# KUBERNETES MANIFEST FOR NGINX INGRESS
+# ==============================================================================
+# Why we use this:
+# Without an Ingress, each externally-facing service needs its own AWS Load
+# Balancer (LoadBalancer type Service). That means:
+#   - Multiple LBs = high cost ($20+/month each)
+#   - No path-based routing
+#   - No centralized TLS termination
+#
+# With NGINX Ingress Controller (ONE load balancer for the whole cluster):
+#   → HTTP/HTTPS traffic enters at a single NLB endpoint
+#   → NGINX routes requests to the correct service based on path/host
+#   → TLS certificates managed in one place (cert-manager)
+#
+# Routing Design:
+#   /api/*  → api-gateway:80  (strip /api prefix)
+#   /*      → frontend:80     (serve Next.js / static files)
+#
+# Prerequisites (installed during cluster bootstrap — see docs/cluster-bootstrap.md):
+#   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+#   helm install ingress-nginx ingress-nginx/ingress-nginx \
+#     --namespace ingress-nginx --create-namespace \
+#     --set controller.service.type=LoadBalancer
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. INGRESS — path-based routing rules
+# ------------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: payflow-ingress
+  namespace: payflow-system
+  labels:
+    app.kubernetes.io/part-of: payflow
+  annotations:
+    # Use the NGINX ingress class (installed via Helm)
+    kubernetes.io/ingress.class: "nginx"
+
+    # Rewrite /api/... → /... before forwarding to api-gateway
+    # The api-gateway expects routes like /auth/login, not /api/auth/login
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+
+    # Enable CORS for frontend ↔ API communication
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization, Content-Type, X-Requested-With"
+
+    # Proxy timeouts — increase for long-running payment operations
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+
+    # Rate limiting — prevent abuse (100 req/s per IP)
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+
+    # Body size — allow larger payloads (default 1MB is restrictive)
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+spec:
+  ingressClassName: nginx
+  rules:
+    # All traffic (no specific host = wildcard, uses LoadBalancer DNS)
+    # For production: set 'host: api.payflow.example.com' for the API
+    # and 'host: app.payflow.example.com' for the frontend
+  - http:
+      paths:
+        # API route: /api/* → api-gateway (strips the /api prefix via rewrite-target)
+        # The (.+) capture group is referenced as $2 in the rewrite-target annotation
+        - path: /api(/|$)(.+)
+          pathType: ImplementationSpecific
+          backend:
+            service:
+              name: api-gateway
+              port:
+                number: 80
+
+        # Frontend route: everything else → frontend service
+        - path: /()(.*)
+          pathType: ImplementationSpecific
+          backend:
+            service:
+              name: frontend
+              port:
+                number: 80
+
+---
+# ------------------------------------------------------------------------------
+# 2. INGRESS FOR API GATEWAY (optional: dedicated host-based rule)
+# ------------------------------------------------------------------------------
+# Uncomment and configure if you want separate domains:
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: payflow-api-ingress
+#   namespace: payflow-system
+# spec:
+#   ingressClassName: nginx
+#   rules:
+#   - host: api.payflow.example.com
+#     http:
+#       paths:
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: api-gateway
+#             port:
+#               number: 80

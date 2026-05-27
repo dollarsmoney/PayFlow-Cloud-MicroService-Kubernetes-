@@ -3,16 +3,18 @@
 # ==============================================================================
 # This file explains how to run a stateful application (a database) in Kubernetes.
 # Unlike stateless apps (like auth-service), databases need to keep their data
-# even if the Pod restarts. 
+# even if the Pod restarts.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
 # 1. PERSISTENT VOLUME CLAIM (PVC)
 # ------------------------------------------------------------------------------
 # Why we use this: Pods are ephemeral. If a pod dies, its internal disk is wiped.
-# A PVC asks Kubernetes to provision a permanent external hard drive (like an 
+# A PVC asks Kubernetes to provision a permanent external hard drive (like an
 # AWS EBS volume) that survives pod restarts.
 # Best Practice: Always separate your compute (Pods) from your storage (Volumes).
+# storageClassName: gp3 ensures we use the newer, faster, cheaper EBS gp3 volume.
+# ------------------------------------------------------------------------------
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -21,6 +23,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce          # The volume can only be mounted by one Node at a time
+  storageClassName: gp3      # Use our custom gp3 StorageClass (ebs.csi.aws.com)
   resources:
     requests:
       storage: 10Gi          # We are asking for 10 Gigabytes of storage space
@@ -29,15 +32,19 @@ spec:
 # ------------------------------------------------------------------------------
 # 2. STATEFULSET (INSTEAD OF DEPLOYMENT)
 # ------------------------------------------------------------------------------
-# Why we use this: StatefulSets are designed for apps that need persistent storage 
-# and stable network identities (like databases). If postgres-0 dies, Kubernetes 
+# Why we use this: StatefulSets are designed for apps that need persistent storage
+# and stable network identities (like databases). If postgres-0 dies, Kubernetes
 # brings it back as postgres-0 and reconnects it to the EXACT SAME storage volume.
 # Best Practice: Never use a standard "Deployment" for a database. Use StatefulSets.
+# ------------------------------------------------------------------------------
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgres
   namespace: payflow-system
+  labels:
+    app: postgres
+    app.kubernetes.io/part-of: payflow
 spec:
   serviceName: "postgres"    # Required for StatefulSets to manage DNS
   replicas: 1                # For learning, 1 replica. In prod, you'd have a primary/replica setup.
@@ -49,26 +56,82 @@ spec:
       labels:
         app: postgres
     spec:
+      serviceAccountName: payflow-service-account
       containers:
       - name: postgres
         image: postgres:15-alpine  # The official lightweight Postgres image
         ports:
         - containerPort: 5432      # Standard Postgres port
-        
-        # Database credentials. In production, use a Kubernetes Secret!
+
+        # IMPROVED: Credentials now come from the centralized payflow-secrets Secret.
+        # Previously these were hardcoded plain-text values — a security risk.
+        # Now they are injected from the Secret at pod startup.
         env:
         - name: POSTGRES_USER
-          value: "payflow_user"
+          valueFrom:
+            secretKeyRef:
+              name: payflow-secrets     # The centralized secrets defined in secrets-manifests.yaml
+              key: POSTGRES_USER
         - name: POSTGRES_PASSWORD
-          value: "payflow_password"
+          valueFrom:
+            secretKeyRef:
+              name: payflow-secrets
+              key: POSTGRES_PASSWORD
         - name: POSTGRES_DB
-          value: "payflow_db"
-          
+          valueFrom:
+            secretKeyRef:
+              name: payflow-secrets
+              key: POSTGRES_DB
+
+        # Performance tuning for a t3.medium EKS node
+        # These settings prevent Postgres from OOM-killing on a constrained node
+        args:
+          - "-c"
+          - "max_connections=100"
+          - "-c"
+          - "shared_buffers=128MB"
+          - "-c"
+          - "effective_cache_size=256MB"
+          - "-c"
+          - "log_min_duration_statement=1000"  # Log slow queries (>1s)
+
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - payflow_user
+            - -d
+            - payflow_db
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 6
+
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - payflow_user
+            - -d
+            - payflow_db
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          failureThreshold: 3
+
         # Mounting the persistent volume into the container
         volumeMounts:
-        - name: postgres-storage      # Name of the volume below
-          mountPath: /var/lib/postgresql/data # Where Postgres saves its data internally
-          
+        - name: postgres-storage          # Name of the volume below
+          mountPath: /var/lib/postgresql/data  # Where Postgres saves its data internally
+
       # Defining the volume that connects to our PVC
       volumes:
       - name: postgres-storage
@@ -79,13 +142,17 @@ spec:
 # ------------------------------------------------------------------------------
 # 3. SERVICE
 # ------------------------------------------------------------------------------
-# Why we use this: This allows our microservices (like auth-service) to connect 
-# to the database using the URL: postgres://payflow_user:payflow_password@postgres:5432/payflow_db
+# Why we use this: This allows our microservices (like auth-service) to connect
+# to the database using the URL: postgresql://payflow_user:payflow_password@postgres:5432/payflow_db
+# The DATABASE_URL secret in secrets-manifests.yaml uses this DNS name "postgres".
+# ------------------------------------------------------------------------------
 apiVersion: v1
 kind: Service
 metadata:
-  name: postgres             # This becomes the DNS hostname!
+  name: postgres             # This becomes the DNS hostname inside the cluster!
   namespace: payflow-system
+  labels:
+    app: postgres
 spec:
   type: ClusterIP            # Keep it internal! Never expose databases to the internet.
   ports:

@@ -1,0 +1,81 @@
+# ============================================================
+# Dockerfile.frontend  — Next.js 14 (standalone output)
+# Build context: repo root (same as all other services)
+# ============================================================
+
+FROM node:18-alpine AS base
+
+WORKDIR /app
+
+# Install pnpm
+RUN npm install -g pnpm@10
+
+# System deps
+RUN apk add --no-cache python3 make g++ openssl libc6-compat
+
+# ── Stage 1: Install dependencies ────────────────────────────
+FROM base AS deps
+
+COPY package.json pnpm-workspace.yaml turbo.json ./
+
+# Shared packages
+COPY packages/logger/package.json            packages/logger/
+COPY packages/event-contracts/package.json   packages/event-contracts/
+COPY packages/db-prisma/package.json         packages/db-prisma/
+
+# All app manifests (pnpm needs the full workspace graph)
+COPY apps/auth-service/package.json                apps/auth-service/
+COPY apps/user-service/package.json                apps/user-service/
+COPY apps/wallet-service/package.json              apps/wallet-service/
+COPY apps/notification-service/package.json        apps/notification-service/
+COPY apps/fraud-detection-service/package.json     apps/fraud-detection-service/
+COPY apps/transaction-history-service/package.json apps/transaction-history-service/
+COPY apps/api-gateway/package.json                 apps/api-gateway/
+COPY apps/frontend/package.json                    apps/frontend/
+
+RUN pnpm config set onlyBuiltDependencies "prisma @prisma/client @prisma/engines bcrypt"
+RUN pnpm install --frozen-lockfile || pnpm install
+
+# ── Stage 2: Build ────────────────────────────────────────────
+FROM deps AS builder
+
+COPY packages/ packages/
+COPY apps/     apps/
+
+# Generate Prisma client & build shared packages
+RUN pnpm --filter @payflow/db    run generate
+RUN pnpm --filter @payflow/logger run build && \
+    pnpm --filter @payflow/events run build && \
+    pnpm --filter @payflow/db     run build
+
+# Build the Next.js app (standalone output)
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN pnpm --filter frontend run build
+
+# ── Stage 3: Production runtime ───────────────────────────────
+FROM node:18-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser  --system --uid 1001 nextjs
+
+# Copy standalone server + static assets produced by Next.js
+COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/.next/static      ./apps/frontend/.next/static
+# public/ is optional — create it if there are no static assets yet
+RUN mkdir -p ./apps/frontend/public
+
+
+USER nextjs
+
+EXPOSE 3007
+
+ENV PORT=3007
+ENV HOSTNAME="0.0.0.0"
+
+# next/standalone emits a server.js at the workspace root level
+CMD ["node", "apps/frontend/server.js"]

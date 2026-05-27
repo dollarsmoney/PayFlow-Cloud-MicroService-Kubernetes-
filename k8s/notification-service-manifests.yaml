@@ -6,6 +6,25 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "3004"
+
+  # Kafka — notification-service CONSUMES events from all other services and
+  # sends emails/SMS/push notifications to users.
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  KAFKA_CLIENT_ID: "notification-service"
+  KAFKA_GROUP_ID: "notification-service-group"
+
+  # Topics this service consumes to trigger notifications
+  KAFKA_TOPICS_CONSUME: "payment.created,payment.completed,payment.failed,wallet.credited,wallet.debited,user.registered,auth.login.success"
+
+  # Notification channels (configure per-environment)
+  NOTIFICATION_CHANNEL_EMAIL: "enabled"
+  NOTIFICATION_CHANNEL_SMS: "disabled"     # Enable when Twilio/SNS is configured
+  NOTIFICATION_CHANNEL_PUSH: "disabled"    # Enable when FCM is configured
+
+  # Email provider (configure AWS SES credentials via IRSA in production)
+  EMAIL_FROM_ADDRESS: "noreply@payflow.example.com"
+  EMAIL_PROVIDER: "ses"   # Options: ses, sendgrid, smtp
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -24,6 +43,7 @@ spec:
       labels:
         app: notification-service
     spec:
+      serviceAccountName: payflow-service-account
       containers:
       - name: notification-service
         image: payflow/notification-service:latest
@@ -33,6 +53,10 @@ spec:
         envFrom:
         - configMapRef:
             name: notification-service-config
+        - secretRef:
+            # Injects: JWT_SECRET, INTERNAL_API_KEY
+            # For production: add SES API keys / SMTP credentials via separate secret
+            name: payflow-secrets
         resources:
           requests:
             memory: "128Mi"
@@ -52,6 +76,7 @@ spec:
             port: 3004
           initialDelaySeconds: 15
           periodSeconds: 20
+
 ---
 apiVersion: v1
 kind: Service

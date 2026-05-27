@@ -66,6 +66,21 @@ model Ledger {
   wallet        Wallet    @relation(fields: [walletId], references: [id])
 }
 
+// Payment Service (written by Go service)
+model Payment {
+  id          String   @id @default(uuid())
+  userId      String
+  amount      Decimal
+  currency    String   @default("USD")
+  status      String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  gatewayRef  String?  // External gateway reference
+  failReason  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
 // Fraud Service
 model FraudAlert {
   id            String    @id @default(uuid())
@@ -75,4 +90,19 @@ model FraudAlert {
   riskScore     Float
   status        String    @default("OPEN") // OPEN, RESOLVED
   createdAt     DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Notification Service
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   // PAYMENT_SUCCESS, PAYMENT_FAILED, FRAUD_ALERT, WELCOME, WALLET_UPDATE
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
