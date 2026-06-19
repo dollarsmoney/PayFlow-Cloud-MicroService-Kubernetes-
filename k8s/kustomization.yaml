@@ -8,18 +8,20 @@ kind: Kustomization
 # has built-in ordering (Namespace → Secret → ConfigMap → ... → Deployment).
 # We order them logically: infrastructure first, then services.
 # ==============================================================================
-resources:
 # -- Infrastructure & Namespace (created first by auth-service-manifests.yaml)
-- auth-service-manifests.yaml          # Also creates the Namespace + RBAC prereqs
-- rbac-manifests.yaml                  # ServiceAccount + Role + RoleBinding
-- gp3-storageclass.yaml                # Default StorageClass for EBS volumes
-- secrets-manifests.yaml               # Centralized secrets (DB, JWT, API keys)
 
 # -- Data tier
-- postgres-manifests.yaml              # PostgreSQL StatefulSet + Service
-- kafka-manifests.yaml                 # Kafka StatefulSet + Services (KRaft mode)
 
 # -- Application services
+
+# -- Scaling & Traffic
+resources:
+- auth-service-manifests.yaml
+- rbac-manifests.yaml
+- gp3-storageclass.yaml
+- secrets-manifests.yaml
+- postgres-manifests.yaml
+- kafka-manifests.yaml
 - api-gateway-manifests.yaml
 - fraud-detection-service-manifests.yaml
 - frontend-manifests.yaml
@@ -28,10 +30,8 @@ resources:
 - transaction-history-service-manifests.yaml
 - user-service-manifests.yaml
 - wallet-service-manifests.yaml
-
-# -- Scaling & Traffic
-- hpa-manifests.yaml                   # HorizontalPodAutoscaler for all 9 services
-- ingress-manifests.yaml               # NGINX Ingress (path-based routing)
+- hpa-manifests.yaml
+- ingress-manifests.yaml
 
 # ==============================================================================
 # IMAGE OVERRIDES (managed by GitHub Actions CI/CD)
@@ -43,28 +43,28 @@ resources:
 images:
 - name: payflow/api-gateway
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/api-gateway
-  newTag: b35c4b5a2afb0c492758a7952416901d2729da87
+  newTag: b71dbc38471753aa87e7028d70daa9e4b0c639c7
 - name: payflow/auth-service
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/auth-service
-  newTag: b35c4b5a2afb0c492758a7952416901d2729da87
+  newTag: b71dbc38471753aa87e7028d70daa9e4b0c639c7
 - name: payflow/fraud-detection-service
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/fraud-detection-service
-  newTag: b35c4b5a2afb0c492758a7952416901d2729da87
+  newTag: b71dbc38471753aa87e7028d70daa9e4b0c639c7
 - name: payflow/frontend
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/frontend
-  newTag: b35c4b5a2afb0c492758a7952416901d2729da87
+  newTag: b71dbc38471753aa87e7028d70daa9e4b0c639c7
 - name: payflow/notification-service
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/notification-service
-  newTag: b35c4b5a2afb0c492758a7952416901d2729da87
+  newTag: b71dbc38471753aa87e7028d70daa9e4b0c639c7
 - name: payflow/payment-service
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/payment-service
-  newTag: b35c4b5a2afb0c492758a7952416901d2729da87
+  newTag: b71dbc38471753aa87e7028d70daa9e4b0c639c7
 - name: payflow/transaction-history-service
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/transaction-history-service
-  newTag: b35c4b5a2afb0c492758a7952416901d2729da87
+  newTag: b71dbc38471753aa87e7028d70daa9e4b0c639c7
 - name: payflow/user-service
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/user-service
-  newTag: b35c4b5a2afb0c492758a7952416901d2729da87
+  newTag: b71dbc38471753aa87e7028d70daa9e4b0c639c7
 - name: payflow/wallet-service
   newName: 827566277132.dkr.ecr.us-east-1.amazonaws.com/payflow/wallet-service
-  newTag: b35c4b5a2afb0c492758a7952416901d2729da87
+  newTag: b71dbc38471753aa87e7028d70daa9e4b0c639c7
