@@ -23,7 +23,8 @@
 **PayFlow** is an enterprise-grade fintech platform engineered for extreme high-throughput, low-latency financial transactions. Architected entirely as decoupled microservices, it leverages the power of distributed event streaming via Apache Kafka and infrastructure-as-code (IaC) utilizing Terraform & Kubernetes, allowing for true auto-scaling and unparalleled fault tolerance.
 
 
-<img width="8920" height="9798" alt="656389923-8804b6d4-590c-4cd7-9ed4-7caae8a1307e" src="https://github.com/user-attachments/assets/4a3a5c7d-7eb9-4eb1-be27-73cfae89b4f3" />
+<img width="8920" height="9798" alt="656389923-8804b6d4-590c-4cd7-9ed4-7caae8a1307e" src="https://github.com/user-attachments/assets/856ec395-d6c7-4e43-a7c8-86e9483bfd83" />
+
 
 
 
