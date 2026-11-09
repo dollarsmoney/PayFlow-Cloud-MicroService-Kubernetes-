@@ -31,6 +31,10 @@
 <img width="1917" height="1090" alt="655342524-2afdf60c-ff47-4200-8bab-4c6344a53f85" src="https://github.com/user-attachments/assets/dc65b621-d047-4234-bc84-23d971281f27" />
 
 
+<img width="1470" height="956" alt="Screenshot 2026-10-12 at 6 27 38 PM" src="https://github.com/user-attachments/assets/4699ab76-3886-4dae-be75-62c2d9e225dc" />
+
+
+
 ---
 
 ## 🏗️ High-Level System Architecture
